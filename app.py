@@ -262,10 +262,13 @@ def svg_circuit(expr, title):
                 label = "0"
 
             elements.append(
-                f"<text x='{x-12}' y='{y+5}' "
-                f"text-anchor='end' class='label'>{label}</text>"
-                f"<circle cx='{x}' cy='{y}' r='3' class='dot'/>"
-            )
+    f"<text x='{x-12}' y='{y+5}' "
+    f"text-anchor='end' "
+    f"font-family='Arial,sans-serif' "
+    f"font-size='16' font-weight='bold' "
+    f"fill='#111827'>{label}</text>"
+    f"<circle cx='{x}' cy='{y}' r='3' fill='#334155'/>"
+)
             return (x, y)
 
         child_positions = [
@@ -287,9 +290,12 @@ def svg_circuit(expr, title):
                 f"L {gx1} {top+gate_h} Z"
             )
             elements.append(
-                f"<path d='{path}' class='gate'/>"
-                f"<circle cx='{gx2-4}' cy='{y}' r='4' class='bubble'/>"
-            )
+    f"<text x='{output_end}' y='{output_y+5}' "
+    f"text-anchor='end' "
+    f"font-family='Arial,sans-serif' "
+    f"font-size='16' font-weight='bold' "
+    f"fill='#111827'>Output F</text>"
+)
             input_points = [(gx1, y)]
             output_x = gx2 + 1
 
