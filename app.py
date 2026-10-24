@@ -365,10 +365,13 @@ def svg_circuit(expr, title):
         f"<path d='M {output_x} {output_y} H {output_end-22}' "
         f"class='wire'/>"
     )
-    elements.append(
-        f"<text x='{output_end}' y='{output_y+5}' "
-        f"text-anchor='end' class='label'>F</text>"
-    )
+   elements.append(
+    f"<text x='{output_end}' y='{output_y+5}' "
+    f"text-anchor='middle' "
+    f"font-family='Arial,sans-serif' "
+    f"font-size='16' font-weight='bold' "
+    f"fill='#111827'>Output F</text>"
+)
 
     return f"""
     <div class="circuit-card">
