@@ -122,40 +122,92 @@ module testbench;
 endmodule
 """
 
-def kmap_html(table, variables):
+
+def kmap_html(table, variables, simplified=None):
     n = len(variables)
+
     if n == 0:
-        return "<div class='note'>This is a constant expression, so a K-map is not needed.</div>"
+        value = int(table.iloc[0]["Original F"])
+        return f"""
+        <div class="kmap-wrap">
+            <h3>Constant Boolean Function</h3>
+            <p><b>Final simplified output:</b> F = {value}</p>
+            <p>The output is always {value}; no variables are needed.</p>
+        </div>
+        """
+
     if n > 4:
-        return "<div class='note'>K-map display supports up to 4 variables. The optimizer and truth table support A–F.</div>"
-    if n == 1:
-        vals = [int(table.iloc[i]["Original F"]) for i in range(len(table))]
-        return f"""<div class='kmap-wrap'><h3>1-variable K-map</h3><table class='kmap'><tr><th>A</th><th>0</th><th>1</th></tr><tr><th>F</th><td>{vals[0]}</td><td>{vals[1]}</td></tr></table><p>Read the cell values in input order.</p></div>"""
-    row_vars = variables[:n//2]
-    col_vars = variables[n//2:]
-    row_codes = ["".join(map(str,b)) for b in product([0,1], repeat=len(row_vars))]
-    col_codes = ["".join(map(str,b)) for b in product([0,1], repeat=len(col_vars))]
-    # Standard Gray-code ordering
+        result = str(simplified) if simplified is not None else "See optimized expression above"
+        return f"""
+        <div class="kmap-wrap">
+            <h3>Karnaugh Map</h3>
+            <p>K-map display supports up to 4 variables.</p>
+            <p><b>Final simplified expression:</b> F = {result}</p>
+            <p>Use the truth table for functions with 5 or 6 variables.</p>
+        </div>
+        """
+
     def gray(nbits):
-        return [format(i ^ (i >> 1), f"0{nbits}b") for i in range(2**nbits)]
-    row_codes, col_codes = gray(len(row_vars)), gray(len(col_vars))
-    # Map table values by ordinary binary assignments
+        return [format(i ^ (i >> 1), f"0{nbits}b")
+                for i in range(2 ** nbits)]
+
+    if n == 1:
+        v = variables[0]
+        lookup = {
+            int(row[v]): int(row["Original F"])
+            for _, row in table.iterrows()
+        }
+        cells = "".join(
+            f"<td class='{'one' if lookup[i] else 'zero'}'>{lookup[i]}</td>"
+            for i in (0, 1)
+        )
+        result = str(simplified) if simplified is not None else "See optimized expression above"
+        return f"""
+        <div class="kmap-wrap">
+            <h3>1-variable Karnaugh Map</h3>
+            <table class="kmap">
+                <tr><th>{v}</th><th>0</th><th>1</th></tr>
+                <tr><th>F</th>{cells}</tr>
+            </table>
+            <p><b>Final simplified expression:</b> F = {result}</p>
+        </div>
+        """
+
+    row_vars = variables[:n // 2]
+    col_vars = variables[n // 2:]
+    row_codes = gray(len(row_vars))
+    col_codes = gray(len(col_vars))
+
     lookup = {}
-    for _, r in table.iterrows():
-        key = "".join(str(int(r[v])) for v in variables)
-        lookup[key] = int(r["Original F"])
-    header = "".join(f"<th>{c or '–'}</th>" for c in col_codes)
+    for _, row in table.iterrows():
+        key = "".join(str(int(row[v])) for v in variables)
+        lookup[key] = int(row["Original F"])
+
+    header = "".join(f"<th>{code}</th>" for code in col_codes)
     body = ""
+
     for rc in row_codes:
-        body += f"<tr><th>{rc or '–'}</th>"
+        body += f"<tr><th>{rc}</th>"
         for cc in col_codes:
-            bitstring = rc + cc
-            key = bitstring
-            val = lookup.get(key, 0)
-            cls = "one" if val else "zero"
-            body += f"<td class='{cls}'>{val}</td>"
+            value = lookup[rc + cc]
+            cell_class = "one" if value else "zero"
+            body += f"<td class='{cell_class}'>{value}</td>"
         body += "</tr>"
-    return f"""<div class='kmap-wrap'><h3>{n}-variable Karnaugh map</h3><p>Rows: {', '.join(row_vars) or 'none'} · Columns: {', '.join(col_vars) or 'none'} · Gray-code order</p><table class='kmap'><tr><th>{'/'.join(row_vars)} \\ {'/'.join(col_vars)}</th>{header}</tr>{body}</table><p class='note'>1-cells are highlighted. The simplified expression is shown in the results above. For maps with more than 4 variables, use the truth table instead.</p></div>"""
+
+    result = str(simplified) if simplified is not None else "See optimized expression above"
+
+    return f"""
+    <div class="kmap-wrap">
+        <h3>{n}-variable Karnaugh Map</h3>
+        <p>Rows: {', '.join(row_vars)} · Columns: {', '.join(col_vars)}</p>
+        <table class="kmap">
+            <tr><th>{'/'.join(row_vars)} / {'/'.join(col_vars)}</th>{header}</tr>
+            {body}
+        </table>
+        <p><b>Final simplified expression:</b> F = {result}</p>
+        <p class="note">Green cells represent output 1; other cells represent output 0.</p>
+    </div>
+    """
 
 def svg_circuit(expr, title):
     # Draw a readable expression-tree schematic with standard-ish gate shapes and explicit wires.
@@ -282,7 +334,7 @@ def run_optimizer(expression):
         verilog = make_verilog(original, simplified, variables)
         tb = make_testbench(variables)
         sim = simulate_verilog(verilog, tb)
-        kmap = kmap_html(table, variables)
+        kmap = kmap_html(table, variables, simplified)
         circuits = make_circuits(original, simplified)
         waveform = make_waveform(table, variables)
         status = f"**Boolean equivalence: {equivalence}**\n\nVariables detected: {', '.join(variables) if variables else 'none'} · Truth-table rows: {len(table)}"
