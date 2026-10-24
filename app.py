@@ -351,10 +351,10 @@ def svg_circuit(expr, title):
 
         for (cx, cy), (ix, iy) in zip(child_positions, input_points):
             mid_x = (cx + ix) / 2
-            wires.append(
-                f"<path d='M {cx} {cy} H {mid_x} V {iy} H {ix}' "
-                f"class='wire'/>"
-            )
+                   wires.append(
+                    f"<path d='M {cx} {cy} H {mid_x} V {iy} H {ix}' "
+                    f"class='wire'/>"
+                )
 
         return (output_x, y)
 
@@ -365,13 +365,14 @@ def svg_circuit(expr, title):
         f"<path d='M {output_x} {output_y} H {output_end-22}' "
         f"class='wire'/>"
     )
-   elements.append(
-    f"<text x='{output_end}' y='{output_y+5}' "
-    f"text-anchor='middle' "
-    f"font-family='Arial,sans-serif' "
-    f"font-size='16' font-weight='bold' "
-    f"fill='#111827'>Output F</text>"
-)
+
+    elements.append(
+        f"<text x='{output_end}' y='{output_y+5}' "
+        f"text-anchor='middle' "
+        f"font-family='Arial,sans-serif' "
+        f"font-size='16' font-weight='bold' "
+        f"fill='#111827'>Output F</text>"
+    )
 
     return f"""
     <div class="circuit-card">
@@ -380,7 +381,6 @@ def svg_circuit(expr, title):
            viewBox="0 0 {width} {height}"
            role="img" aria-label="{title}"
            style="display:block;width:100%;height:auto">
-        <style>
           .wire {{ stroke:#334155; stroke-width:2; fill:none;
                    stroke-linejoin:round; stroke-linecap:round; }}
           .gate {{ stroke:#2563eb; stroke-width:2; fill:#eff6ff; }}
