@@ -240,7 +240,7 @@ def svg_circuit(expr, title):
     width = max(650, 190 * (max_depth + 1) + 180)
     height = max(190, 65 * leaf_count + 70)
 
-    left = 100
+    left = 140
     right = width - 100
     x_step = (right - left) / max(1, max_depth + 1)
 
