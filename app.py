@@ -209,70 +209,164 @@ def kmap_html(table, variables, simplified=None):
     </div>
     """
 
+
 def svg_circuit(expr, title):
-    # Draw a readable expression-tree schematic with standard-ish gate shapes and explicit wires.
-    # Each operator is a gate; leaves are input labels. Child-to-gate wiring follows the parsed expression tree.
-    def leaves(e):
-        if isinstance(e, (sp.Symbol,)) or e in (sp.true, sp.false):
+    """Draw a logic circuit with inputs on the left and output F on the right."""
+
+    def is_leaf(node):
+        return isinstance(node, sp.Symbol) or node in (sp.true, sp.false)
+
+    def count_leaves(node):
+        if is_leaf(node):
             return 1
-        return sum(leaves(a) for a in e.args)
-    leaf_count = max(1, leaves(expr))
-    width = 760
-    height = max(170, 46 * leaf_count + 48)
-    left = 42
-    right = width - 45
-    def max_depth_of(e):
-        if isinstance(e, sp.Symbol) or e in (sp.true, sp.false):
+        return sum(count_leaves(child) for child in node.args)
+
+    def depth(node):
+        if is_leaf(node):
             return 0
-        return 1 + max((max_depth_of(a) for a in e.args), default=0)
-    max_depth = max(1, max_depth_of(expr))
-    xstep = (right - left) / (max_depth + 1)
-    positions = []
-    cursor = [0]
+        return 1 + max(depth(child) for child in node.args)
+
+    leaf_count = max(1, count_leaves(expr))
+    max_depth = depth(expr)
+
+    width = max(560, 150 * (max_depth + 1) + 180)
+    height = max(190, 60 * leaf_count + 70)
+    left = 65
+    right = width - 85
+    x_step = (right - left) / max(1, max_depth + 1)
+
     elements = []
     wires = []
-    def draw(e, depth):
-        nonlocal positions
-        if isinstance(e, sp.Symbol) or e in (sp.true, sp.false):
-            y = 34 + cursor[0] * 42
-            cursor[0] += 1
-            x = left + depth * xstep
-            label = str(e) if isinstance(e, sp.Symbol) else ("1" if e == sp.true else "0")
-            elements.append(f"<text x='{x-28:.1f}' y='{y+4:.1f}' class='lbl'>{label}</text><circle cx='{x:.1f}' cy='{y:.1f}' r='3' class='node'/>")
+    leaf_index = [0]
+
+    def draw(node, level=0):
+        if is_leaf(node):
+            y = 45 + leaf_index[0] * 60
+            leaf_index[0] += 1
+            x = left
+            label = (
+                str(node)
+                if isinstance(node, sp.Symbol)
+                else ("1" if node == sp.true else "0")
+            )
+            elements.append(
+                f"<text x='{x-12}' y='{y-12}' class='label'>{label}</text>"
+                f"<circle cx='{x}' cy='{y}' r='3' class='dot'/>"
+            )
             return (x, y)
-        child_pos = [draw(a, depth + 1) for a in e.args]
-        y = sum(p[1] for p in child_pos) / len(child_pos)
-        x = left + depth * xstep
-        gate_w, gate_h = 58, max(34, 24 * len(child_pos))
-        top = y - gate_h/2
-        if isinstance(e, sp.Not):
-            # triangle inverter + output bubble
-            elements.append(f"<path d='M{x-gate_w/2:.1f} {top:.1f} L{x+gate_w/2-8:.1f} {y:.1f} L{x-gate_w/2:.1f} {top+gate_h:.1f} Z' class='gate'/><circle cx='{x+gate_w/2-4:.1f}' cy='{y:.1f}' r='4' class='gatefill'/>")
-            inpoints = [(x-gate_w/2, y)]
-            outx = x+gate_w/2+1
+
+        children = [draw(child, level + 1) for child in node.args]
+        y = sum(point[1] for point in children) / len(children)
+        x = right - level * x_step
+        gate_w = 64
+        gate_h = max(42, 24 * len(children))
+        top = y - gate_h / 2
+        left_gate = x - gate_w / 2
+        right_gate = x + gate_w / 2
+
+        if isinstance(node, sp.Not):
+            path = (
+                f"M {left_gate} {top} "
+                f"L {right_gate-9} {y} "
+                f"L {left_gate} {top+gate_h} Z"
+            )
+            elements.append(
+                f"<path d='{path}' class='gate'/>"
+                f"<circle cx='{right_gate-4}' cy='{y}' r='4' class='bubble'/>"
+            )
+            input_points = [(left_gate, y)]
+            output_x = right_gate + 1
+
+        elif isinstance(node, sp.And):
+            path = (
+                f"M {left_gate} {top} "
+                f"L {x} {top} "
+                f"A {gate_w/2} {gate_h/2} 0 0 1 {x} {top+gate_h} "
+                f"L {left_gate} {top+gate_h} Z"
+            )
+            elements.append(
+                f"<path d='{path}' class='gate'/>"
+                f"<text x='{x-5}' y='{y+4}' class='gate-label'>AND</text>"
+            )
+            input_points = [
+                (left_gate, top + gate_h * (i + 1) / (len(children) + 1))
+                for i in range(len(children))
+            ]
+            output_x = right_gate
+
+        elif isinstance(node, sp.Or):
+            path = (
+                f"M {left_gate} {top} "
+                f"Q {left_gate+18} {y} {left_gate} {top+gate_h} "
+                f"Q {x+12} {top+gate_h} {right_gate} {y} "
+                f"Q {x+12} {top} {left_gate} {top} Z"
+            )
+            elements.append(
+                f"<path d='{path}' class='gate'/>"
+                f"<text x='{x-7}' y='{y+4}' class='gate-label'>OR</text>"
+            )
+            input_points = [
+                (left_gate + 5, top + gate_h * (i + 1) / (len(children) + 1))
+                for i in range(len(children))
+            ]
+            output_x = right_gate
+
         else:
-            if isinstance(e, sp.And):
-                label = "AND"
-                path = f"M{x-gate_w/2:.1f} {top:.1f} L{x-8:.1f} {top:.1f} Q{x+gate_w/2:.1f} {top:.1f} {x+gate_w/2:.1f} {y:.1f} Q{x+gate_w/2:.1f} {top+gate_h:.1f} {x-8:.1f} {top+gate_h:.1f} L{x-gate_w/2:.1f} {top+gate_h:.1f} Z"
-            elif isinstance(e, sp.Or):
-                label = "OR"
-                path = f"M{x-gate_w/2:.1f} {top:.1f} Q{x-gate_w/2+16:.1f} {y:.1f} {x-gate_w/2:.1f} {top+gate_h:.1f} Q{x+gate_w/2-12:.1f} {top+gate_h:.1f} {x+gate_w/2:.1f} {y:.1f} Q{x+gate_w/2-12:.1f} {top:.1f} {x-gate_w/2:.1f} {top:.1f} Z"
-            else:
-                label = "GATE"
-                path = f"M{x-gate_w/2:.1f} {top:.1f} H{x+gate_w/2:.1f} V{top+gate_h:.1f} H{x-gate_w/2:.1f} Z"
-            elements.append(f"<path d='{path}' class='gate'/><text x='{x:.1f}' y='{y+4:.1f}' text-anchor='middle' class='gatetxt'>{label}</text>")
-            inpoints = [(x-gate_w/2, top + gate_h*(i+1)/(len(child_pos)+1)) for i in range(len(child_pos))]
-            outx = x+gate_w/2
-        for (cx, cy), (gx, gy) in zip(child_pos, inpoints):
-            wires.append(f"<path d='M{cx:.1f} {cy:.1f} H{(gx+cx)/2:.1f} V{gy:.1f} H{gx:.1f}' class='wire'/>")
-        return (outx, y)
-    # define max_depth helper before drawing via local global lookup
-    outx, outy = draw(expr, 0)
-    out_end = width - 24
-    wires.append(f"<path d='M{outx:.1f} {outy:.1f} H{out_end:.1f}' class='wire'/>")
-    elements.append(f"<text x='{out_end-2:.1f}' y='{outy-10:.1f}' text-anchor='end' class='lbl'>F</text>")
-    # wires behind gates
-    return f"""<div class='circuit-card'><h3>{title}</h3><svg viewBox='0 0 {width} {height}' role='img' aria-label='{title}'><style>.wire{{stroke:#334155;stroke-width:2;fill:none;stroke-linejoin:round}}.gate{{stroke:#2563eb;stroke-width:2;fill:#eff6ff}}.gatefill{{stroke:#2563eb;stroke-width:2;fill:white}}.node{{fill:#334155}}.lbl{{font: bold 14px sans-serif;fill:#0f172a}}.gatetxt{{font: bold 9px sans-serif;fill:#1d4ed8}}</style>{''.join(wires)}{''.join(elements)}</svg></div>"""
+            label = type(node).__name__.upper()
+            elements.append(
+                f"<rect x='{left_gate}' y='{top}' width='{gate_w}' "
+                f"height='{gate_h}' rx='5' class='gate'/>"
+                f"<text x='{x}' y='{y+4}' text-anchor='middle' "
+                f"class='gate-label'>{label}</text>"
+            )
+            input_points = [
+                (left_gate, top + gate_h * (i + 1) / (len(children) + 1))
+                for i in range(len(children))
+            ]
+            output_x = right_gate
+
+        for (child_x, child_y), (input_x, input_y) in zip(
+            children, input_points
+        ):
+            wires.append(
+                f"<path d='M {child_x} {child_y} "
+                f"H {(child_x+input_x)/2} "
+                f"V {input_y} H {input_x}' class='wire'/>"
+            )
+
+        return (output_x, y)
+
+    output_x, output_y = draw(expr)
+
+    output_end = width - 28
+    wires.append(
+        f"<path d='M {output_x} {output_y} H {output_end}' class='wire'/>"
+    )
+    elements.append(
+        f"<text x='{output_end-3}' y='{output_y-12}' "
+        f"text-anchor='end' class='label'>F</text>"
+    )
+
+    return f"""
+    <div class="circuit-card">
+      <h3>{title}</h3>
+      <svg viewBox="0 0 {width} {height}"
+           role="img" aria-label="{title}"
+           style="width:100%;height:auto;max-height:520px">
+        <style>
+          .wire {{ stroke:#334155; stroke-width:2; fill:none;
+                   stroke-linejoin:round; stroke-linecap:round; }}
+          .gate {{ stroke:#2563eb; stroke-width:2; fill:#eff6ff; }}
+          .bubble {{ stroke:#2563eb; stroke-width:2; fill:white; }}
+          .dot {{ fill:#334155; }}
+          .label {{ font:bold 14px sans-serif; fill:#0f172a; }}
+          .gate-label {{ font:bold 9px sans-serif; fill:#1d4ed8; }}
+        </style>
+        {''.join(wires)}
+        {''.join(elements)}
+      </svg>
+    </div>
+    """
 
 def make_circuits(original, simplified):
     return "<div class='circuits'>" + svg_circuit(original, "Original circuit") + svg_circuit(simplified, "Optimized circuit") + "</div>"
