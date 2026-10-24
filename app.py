@@ -208,31 +208,40 @@ def kmap_html(table, variables, simplified=None):
         <p class="note">Green cells represent output 1; other cells represent output 0.</p>
     </div>
     """
-
-
+    
 def svg_circuit(expr, title):
-    """Draw a logic circuit with inputs on the left and output F on the right."""
+    """Draw a labeled Boolean logic circuit using SVG."""
 
     def is_leaf(node):
-        return isinstance(node, sp.Symbol) or node in (sp.true, sp.false)
+        return (
+            isinstance(node, sp.Symbol)
+            or node == sp.true
+            or node == sp.false
+        )
 
-    def count_leaves(node):
+    def leaves(node):
         if is_leaf(node):
-            return 1
-        return sum(count_leaves(child) for child in node.args)
+            return [node]
+        result = []
+        for child in node.args:
+            result.extend(leaves(child))
+        return result
 
-    def depth(node):
+    leaf_nodes = leaves(expr)
+    leaf_count = len(leaf_nodes)
+    max_depth = 0
+
+    def get_depth(node):
         if is_leaf(node):
             return 0
-        return 1 + max(depth(child) for child in node.args)
+        return 1 + max(get_depth(child) for child in node.args)
 
-    leaf_count = max(1, count_leaves(expr))
-    max_depth = depth(expr)
+    max_depth = get_depth(expr)
+    width = max(650, 190 * (max_depth + 1) + 180)
+    height = max(190, 65 * leaf_count + 70)
 
-    width = max(560, 150 * (max_depth + 1) + 180)
-    height = max(190, 60 * leaf_count + 70)
-    left = 65
-    right = width - 85
+    left = 100
+    right = width - 100
     x_step = (right - left) / max(1, max_depth + 1)
 
     elements = []
@@ -241,125 +250,134 @@ def svg_circuit(expr, title):
 
     def draw(node, level=0):
         if is_leaf(node):
-            y = 45 + leaf_index[0] * 60
+            y = 45 + leaf_index[0] * 65
             leaf_index[0] += 1
             x = left
-            label = (
-                str(node)
-                if isinstance(node, sp.Symbol)
-                else ("1" if node == sp.true else "0")
-            )
+
+            if isinstance(node, sp.Symbol):
+                label = str(node)
+            elif node == sp.true:
+                label = "1"
+            else:
+                label = "0"
+
             elements.append(
-                f"<text x='{x-12}' y='{y-12}' class='label'>{label}</text>"
+                f"<text x='{x-12}' y='{y+5}' "
+                f"text-anchor='end' class='label'>{label}</text>"
                 f"<circle cx='{x}' cy='{y}' r='3' class='dot'/>"
             )
             return (x, y)
 
-        children = [draw(child, level + 1) for child in node.args]
-        y = sum(point[1] for point in children) / len(children)
+        child_positions = [
+            draw(child, level + 1) for child in node.args
+        ]
+
+        y = sum(p[1] for p in child_positions) / len(child_positions)
         x = right - level * x_step
         gate_w = 64
-        gate_h = max(42, 24 * len(children))
+        gate_h = max(42, 24 * len(child_positions))
         top = y - gate_h / 2
-        left_gate = x - gate_w / 2
-        right_gate = x + gate_w / 2
+        gx1 = x - gate_w / 2
+        gx2 = x + gate_w / 2
 
         if isinstance(node, sp.Not):
             path = (
-                f"M {left_gate} {top} "
-                f"L {right_gate-9} {y} "
-                f"L {left_gate} {top+gate_h} Z"
+                f"M {gx1} {top} "
+                f"L {gx2-9} {y} "
+                f"L {gx1} {top+gate_h} Z"
             )
             elements.append(
                 f"<path d='{path}' class='gate'/>"
-                f"<circle cx='{right_gate-4}' cy='{y}' r='4' class='bubble'/>"
+                f"<circle cx='{gx2-4}' cy='{y}' r='4' class='bubble'/>"
             )
-            input_points = [(left_gate, y)]
-            output_x = right_gate + 1
+            input_points = [(gx1, y)]
+            output_x = gx2 + 1
 
         elif isinstance(node, sp.And):
             path = (
-                f"M {left_gate} {top} "
+                f"M {gx1} {top} "
                 f"L {x} {top} "
                 f"A {gate_w/2} {gate_h/2} 0 0 1 {x} {top+gate_h} "
-                f"L {left_gate} {top+gate_h} Z"
+                f"L {gx1} {top+gate_h} Z"
             )
             elements.append(
                 f"<path d='{path}' class='gate'/>"
-                f"<text x='{x-5}' y='{y+4}' class='gate-label'>AND</text>"
+                f"<text x='{x-5}' y='{y+4}' "
+                f"class='gate-label'>AND</text>"
             )
             input_points = [
-                (left_gate, top + gate_h * (i + 1) / (len(children) + 1))
-                for i in range(len(children))
+                (gx1, top + gate_h * (i+1) / (len(child_positions)+1))
+                for i in range(len(child_positions))
             ]
-            output_x = right_gate
+            output_x = gx2
 
         elif isinstance(node, sp.Or):
             path = (
-                f"M {left_gate} {top} "
-                f"Q {left_gate+18} {y} {left_gate} {top+gate_h} "
-                f"Q {x+12} {top+gate_h} {right_gate} {y} "
-                f"Q {x+12} {top} {left_gate} {top} Z"
+                f"M {gx1} {top} "
+                f"Q {gx1+18} {y} {gx1} {top+gate_h} "
+                f"Q {x+12} {top+gate_h} {gx2} {y} "
+                f"Q {x+12} {top} {gx1} {top} Z"
             )
             elements.append(
                 f"<path d='{path}' class='gate'/>"
-                f"<text x='{x-7}' y='{y+4}' class='gate-label'>OR</text>"
+                f"<text x='{x-7}' y='{y+4}' "
+                f"class='gate-label'>OR</text>"
             )
             input_points = [
-                (left_gate + 5, top + gate_h * (i + 1) / (len(children) + 1))
-                for i in range(len(children))
+                (gx1+5, top + gate_h * (i+1) / (len(child_positions)+1))
+                for i in range(len(child_positions))
             ]
-            output_x = right_gate
+            output_x = gx2
 
         else:
-            label = type(node).__name__.upper()
+            gate_name = type(node).__name__.upper()
             elements.append(
-                f"<rect x='{left_gate}' y='{top}' width='{gate_w}' "
+                f"<rect x='{gx1}' y='{top}' width='{gate_w}' "
                 f"height='{gate_h}' rx='5' class='gate'/>"
                 f"<text x='{x}' y='{y+4}' text-anchor='middle' "
-                f"class='gate-label'>{label}</text>"
+                f"class='gate-label'>{gate_name}</text>"
             )
             input_points = [
-                (left_gate, top + gate_h * (i + 1) / (len(children) + 1))
-                for i in range(len(children))
+                (gx1, top + gate_h * (i+1) / (len(child_positions)+1))
+                for i in range(len(child_positions))
             ]
-            output_x = right_gate
+            output_x = gx2
 
-        for (child_x, child_y), (input_x, input_y) in zip(
-            children, input_points
-        ):
+        for (cx, cy), (ix, iy) in zip(child_positions, input_points):
+            mid_x = (cx + ix) / 2
             wires.append(
-                f"<path d='M {child_x} {child_y} "
-                f"H {(child_x+input_x)/2} "
-                f"V {input_y} H {input_x}' class='wire'/>"
+                f"<path d='M {cx} {cy} H {mid_x} V {iy} H {ix}' "
+                f"class='wire'/>"
             )
 
         return (output_x, y)
 
     output_x, output_y = draw(expr)
+    output_end = width - 35
 
-    output_end = width - 28
     wires.append(
-        f"<path d='M {output_x} {output_y} H {output_end}' class='wire'/>"
+        f"<path d='M {output_x} {output_y} H {output_end-22}' "
+        f"class='wire'/>"
     )
     elements.append(
-        f"<text x='{output_end-3}' y='{output_y-12}' "
+        f"<text x='{output_end}' y='{output_y+5}' "
         f"text-anchor='end' class='label'>F</text>"
     )
 
     return f"""
     <div class="circuit-card">
       <h3>{title}</h3>
-      <svg viewBox="0 0 {width} {height}"
+      <svg xmlns="http://www.w3.org/2000/svg"
+           viewBox="0 0 {width} {height}"
            role="img" aria-label="{title}"
-           style="width:100%;height:auto;max-height:520px">
+           style="display:block;width:100%;height:auto">
         <style>
           .wire {{ stroke:#334155; stroke-width:2; fill:none;
                    stroke-linejoin:round; stroke-linecap:round; }}
           .gate {{ stroke:#2563eb; stroke-width:2; fill:#eff6ff; }}
           .bubble {{ stroke:#2563eb; stroke-width:2; fill:white; }}
           .dot {{ fill:#334155; }}
-          .label {{ font:bold 14px sans-serif; fill:#0f172a; }}
+          .label {{ font:bold 15px sans-serif; fill:#0f172a; }}
           .gate-label {{ font:bold 9px sans-serif; fill:#1d4ed8; }}
         </style>
         {''.join(wires)}
